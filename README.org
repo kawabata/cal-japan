@@ -1,0 +1,17 @@
+#+TITLE: cal-japan.el .. Japanese Calendar
+
+* 概要
+Emacs Lisp による和暦（元号・干支）の実装です。
+* 設定
+#+begin_src emacs-lisp
+(require 'cal-japan)
+(define-key calendar-mode-map "pJ" 'calendar-japanese-print-date)
+(define-key calendar-mode-map "gJ" 'calendar-japanese-goto-date)
+#+end_src
+
+* 利用例
+- カレンダーで見たい日付にカーソルを合わせて、p,J (calendar-japanese-print-date) とキー入力することで、日本の元号が表示されます。
+- カレンダーで g,J (calendar-japanese-goto-date) とキー入力することで、元号を入力して当該日に行けます。
+
+* 参考
+- 暦については「日本暦日辞典」および [[https://github.com/suchowan/when_exe][when.exe]] を参考にしています。
