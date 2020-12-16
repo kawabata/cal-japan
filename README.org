@@ -1,3 +1,4 @@
+
 #+TITLE: cal-japan.el .. Japanese Calendar
 
 * 概要
@@ -14,4 +15,4 @@ Emacs Lisp による和暦（元号・干支）の実装です。
 - カレンダーで g,J (calendar-japanese-goto-date) とキー入力することで、元号を入力して当該日に行けます。
 
 * 参考
-- 暦については「日本暦日辞典」および [[https://github.com/suchowan/when_exe][when.exe]] を参考にしています。
+- 実装にあたり「日本暦日原典」および [[https://github.com/suchowan/when_exe][when.exe]] を参考にしています。
