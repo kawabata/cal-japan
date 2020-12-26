@@ -24,6 +24,7 @@
 
 ;;; Basic Constants & Variables:
 
+(require 'calendar)
 (require 'seq)
 
 (defvar calendar-japanese-celestial-stem
@@ -44,13 +45,27 @@
 (defvar calendar-japanese-terrestrial-branch-kun
   ["ね" "うし" "とら" "う" "たつ" "み" "うま" "ひつじ" "さる" "とり" "いぬ" "い"])
 
-(defvar calendar-japanese-sexagenary-on nil)
+(defvar calendar-japanese-sexagenary-form '("（" stem branch "・" stem-kun stem-no branch-kun "）")
+  "Format for Japanese Sexagenary.
+`stem-no' denotes `の' character that is only used when stem is odd number.")
 
-(defvar calendar-japanese-sexagenary-kun t)
+(defconst calendar-japanese-year-index 454)
+
+(defsubst calendar-japanese-year-index (year)
+  "Japanese YEAR index."
+  (- year calendar-japanese-year-index))
+
+(defconst calendar-japanese-absolute-start 165501)
+;; 2/15/454 ... 165501
+;; 1/25/445 ... 162193
+
+(defconst calendar-japanese-1/1/1873-absolute 683734)
 
 (defconst calendar-japanese-year-months
-  '[;; 日本暦日辞典
-    aBcDeFgHiJkL  aBCdEfGhIjKl ;; A.D. 454  (absolute date 165501)
+  '[;; AbCdEeFgHiJkL ;; 1/25/445 允恭天皇34年
+    ;; AbCdEfGhIjKl AbCDeFgHiJkL aBbCdEfGHiJkL aBcDeFgHiJkL AbCdEfGhIjJkL
+    ;; aBCdEfGhIjKl AbCdEfGHiJkL aBcDeFfGhIjKL
+    aBcDeFgHiJkL  aBCdEfGhIjKl ;; 2/15/454 安康天皇1年
     AbCcDeFGhIjKl AbCdEfGhIjKL  aBcDeFgHiJkLl AbCDeFgHiJkL  aBcDeFGhIjKl
     AbCdEfGhIiJKl AbCdEfGhIjKl  AbCDeFgHiJkL  aBcDeEFgHiJkL aBcDeFgHiJKl
     AbCdEfGhIjKl  AaBCdEfGhIjKl AbCdEFgHiJkL  aBcDeFgHiJKkL aBcDeFgHiJkL
@@ -357,10 +372,12 @@
    (symbol-name (aref calendar-japanese-year-months y-idx))))
 
 (defsubst calendar-japanese-months-days (month-indicators)
+  "Number of Days of MONTH-INDICATORS."
   (mapcar (lambda (month-indicator) (if (< month-indicator 96) 30 29)) month-indicators))
 
 (defvar calendar-japanese-absolute
-  (let ((vector (make-vector (1+ (length calendar-japanese-year-months)) 165501)))
+  (let ((vector (make-vector (1+ (length calendar-japanese-year-months))
+                             calendar-japanese-absolute-start)))
     (dotimes (i (length calendar-japanese-year-months))
       (aset vector (1+ i)
             (apply '+
@@ -371,15 +388,21 @@
   "Absolute date of 1/1 of each year (since 454 A.D) in Japan.")
 
 (defconst calendar-japanese-era
-  '(;;("<継体>" (02 04 0450)) ;; 元嘉暦は継体天皇5年以降。
-    ("<安閑>" (02 07 0531))
+  '(("<安康>" (12 14 0454))
+    ("<雄略>" (11 13 0457))
+    ("<清寧>" (01 15 0480))
+    ("<顕宗>" (01 01 0485))
+    ("<仁賢>" (01 05 0488))
+    ("<武烈>" (12 nil 0499))
+    ("<継体>" (02 04 0507))
+    ("<安閑>" (02 07 0534))
     ("<宣化>" (12 nil 0536))
     ("<欽明>" (12 05 0539))
     ("<敏達>" (04 03 0572))
     ("<用明>" (09 05 0585))
     ("<崇峻>" (08 02 0587))
-    ("<推古>" (01 01 0593))
-    ("<舒明>" (01 04 0629))
+    ("<推古>" (12 08 0592) (03 07 0628))
+    ("<舒明>" (01 04 0629) (10 09 0641))
     ("<皇極>" (01 15 0642))
     ("大化" (06 19 0645))
     ("白雉" (02 15 0650))
@@ -547,7 +570,7 @@
     ("興国" (04 28 1340)) ; 大覚寺統
     ("正平" (12 08 1346)) ; 大覚寺統
     ("建徳" (07 24 1370)) ; 大覚寺統
-    ("文中" (04 nil 1372)) ; 大覚寺統 日付は史料なし
+    ("文中" (04 nil 1372)) ; 大覚寺統
     ("天授" (05 27 1375)) ; 大覚寺統
     ("弘和" (02 10 1381)) ; 大覚寺統
     ("元中" (04 28 1384) ((10) 5 1392)) ; 大覚寺統
@@ -644,7 +667,7 @@
 
 (defun calendar-japanese-era-setup ()
   "Set up `cj-ear-year' and `cj-ear-year-max' variables."
-  (let ((vector (make-vector (- 2100 454) nil))
+  (let ((vector (make-vector (calendar-japanese-year-index 2100) nil))
         (ht (make-hash-table :test 'equal)))
     (dotimes (i (1-(length calendar-japanese-era)))
       (let* ((era (car (elt calendar-japanese-era i)))
@@ -656,9 +679,8 @@
         (puthash era (cons start-year (- end-year start-year -1)) ht)
         (cl-loop for i from start-year to end-year
                  do
-                 ;; (message "debug: era=%s i=%s" era i)
                  (cl-pushnew (cons era (- i start-year -1))
-                             (aref vector (- i 454))))))
+                             (aref vector (calendar-japanese-year-index i))))))
     (setq calendar-japanese-era-year vector)
     (setq calendar-japanese-era-year-max ht)))
 
@@ -678,11 +700,12 @@
   "Calculate Japanese Date from  absolute DATE.
 Leap month is expressed as a list."
   (unless (integerp date) (error "Date is not integer"))
-  (if (< date 165501) (error "Abs date before 165501 is not supported"))
+  (if (< date calendar-japanese-absolute-start)
+      (error "Abs date before 165501 is not supported"))
   (if (< 683734 date) (calendar-gregorian-from-absolute date)
     (let* ((y-idx (1- (cl-position-if (lambda (x) (< date x))
                                       calendar-japanese-absolute)))
-           (year (+ y-idx 454))
+           (year (+ y-idx calendar-japanese-year-index))
            (days (- date (aref calendar-japanese-absolute y-idx)))
            (month-indicators (calendar-japanese-month-indicators y-idx))
            (months-days (calendar-japanese-months-days month-indicators))
@@ -704,7 +727,7 @@ Leap month is expressed as a list."
     (let* ((month (elt date 0))
            (day   (elt date 1))
            (year  (elt date 2))
-           (y-idx (- year 454))
+           (y-idx (calendar-japanese-year-index year))
            (abs   (aref calendar-japanese-absolute y-idx))
            (m-indicators (calendar-japanese-month-indicators y-idx))
            (months       (calendar-japanese-months m-indicators))
@@ -714,21 +737,16 @@ Leap month is expressed as a list."
 
 (defun calendar-japanese-sexagenary (base)
   "Sexagenary with parenthesis of BASE number."
-  (let ((celestial  (% base 10))
-        (terrestrial (% base 12)))
-    (concat "（" (aref calendar-japanese-celestial-stem celestial)
-            (aref calendar-japanese-terrestrial-branch terrestrial)
-            (if calendar-japanese-sexagenary-on
-                (concat
-                 "・"
-                 (aref calendar-japanese-celestial-stem-on celestial)
-                 (aref calendar-japanese-terrestrial-branch-on terrestrial)))
-            (if calendar-japanese-sexagenary-kun
-                (concat
-                 "・"
-                 (aref calendar-japanese-celestial-stem-kun celestial)
-                 (aref calendar-japanese-terrestrial-branch-kun terrestrial)))
-            "）")))
+  (let* ((stem  (% base 10))
+         (branch (% base 12))
+	 (lexical `((stem .  ,(aref calendar-japanese-celestial-stem stem))
+		    (branch . ,(aref calendar-japanese-terrestrial-branch branch))
+		    (stem-on .  ,(aref calendar-japanese-celestial-stem-on stem))
+		    (branch-on . ,(aref calendar-japanese-terrestrial-branch-on branch))
+		    (stem-kun .  ,(aref calendar-japanese-celestial-stem-kun stem))
+		    (branch-kun . ,(aref calendar-japanese-terrestrial-branch-kun branch))
+		    (stem-no .  ,(if (cl-oddp stem) "の" "")))))
+    (mapconcat (lambda (sym) (eval sym lexical)) calendar-japanese-sexagenary-form "")))
 
 (defun calendar-japanese-year-name (era-year year)
   "Japanese ERA-YEAR (YEAR) name with sexagenary."
@@ -768,7 +786,8 @@ Leap month is expressed as a list."
     (if (< year 1873)
         ;; Old Japanese Calendar
         (let* ((month-indicators
-                (calendar-japanese-month-indicators (- year 454)))
+                (calendar-japanese-month-indicators
+                 (calendar-japanese-year-index year)))
                (months (calendar-japanese-months month-indicators))
                (month-name-list
                 (mapcar (lambda (m) (calendar-japanese-month-name m year))
@@ -802,7 +821,8 @@ Leap month is expressed as a list."
 
 (defun calendar-japanese-era-name (year)
   "Japanese Era Name of YEAR with sexagenary."
-  (let* ((eras (aref calendar-japanese-era-year (- year 454)))
+  (let* ((eras (aref calendar-japanese-era-year
+                     (calendar-japanese-year-index year)))
          (base (- year 4)))
     (concat
      (mapconcat (lambda (era) (let ((name (car era))
