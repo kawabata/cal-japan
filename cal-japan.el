@@ -49,15 +49,16 @@
   "Format for Japanese Sexagenary.
 `stem-no' denotes `の' character that is only used when stem is odd number.")
 
+(defvar calendar-japanese-use-kanji-number t)
+
 (defconst calendar-japanese-year-index 454)
+(defconst calendar-japanese-absolute-start 165501)
+;; 2/15/454 ... 165501
+;; 1/25/445 ... 162193
 
 (defsubst calendar-japanese-year-index (year)
   "Japanese YEAR index."
   (- year calendar-japanese-year-index))
-
-(defconst calendar-japanese-absolute-start 165501)
-;; 2/15/454 ... 165501
-;; 1/25/445 ... 162193
 
 (defconst calendar-japanese-1/1/1873-absolute 683734)
 
@@ -688,6 +689,16 @@
 
 ;;; Code:
 
+(defun calendar-japanese-decimal-notation (num)
+  "Notation of NUM in Japanese Kanji."
+  (if (or (not (integerp num)) (< 31 num)) (error "NUM not supported"))
+  (let* ((kanji ["〇" "一" "二" "三" "四" "五" "六" "七" "八" "九" "十" "廿" "卅"])
+         (digit1 (% num 10))
+         (digit2 (/ num 10)))
+    (concat (if (< 1 digit2) (aref kanji digit2) "")
+            (if (< 0 digit2) (aref kanji 10) "")
+            (if (= 0 digit1) "" (aref kanji digit1)))))
+
 (defsubst calendar-japanese-months (month-indicators)
   "List of months (leap month is list) from MONTH-INDICATORS."
   (cl-loop for indicator in month-indicators
@@ -767,20 +778,25 @@ Leap month is expressed as a list."
 
 (defun calendar-japanese-query-year ()
   "Query Japanese year."
-  (let* ((era (completing-read "Era? " calendar-japanese-era-year-max))
+  (interactive)
+  (let* ((era (completing-read
+               "Era? " (nreverse (hash-table-keys calendar-japanese-era-year-max))))
          (era-tuple (gethash era calendar-japanese-era-year-max))
-          (start-year (car era-tuple))
-          (max-year (cdr era-tuple))
-          (candidate-years
-           (cl-loop for i from 1 to max-year
-                    collect (calendar-japanese-year-name
-                             i (+ i start-year -1)))))
-    (+ (cl-position (completing-read "Year? " candidate-years)
-                    candidate-years :test 'equal)
-       start-year)))
+         (start-year (car era-tuple))
+         (max-year (cdr era-tuple))
+         (candidate-years
+          (cl-loop for i from 1 to max-year
+                   collect (calendar-japanese-year-name
+                            i (+ i start-year -1))))
+         (year (+ (cl-position (completing-read "Year? " candidate-years)
+                               candidate-years :test 'equal)
+                  start-year)))
+    (when (called-interactively-p 'any) (message "西暦=%d年" year))
+    year))
 
 (defun calendar-japanese-query-date (year)
-  "Query Japanese date of YEAR."
+  "Query Japanese date of YEAR.
+It returns converted Gregorian date."
   (interactive (list (calendar-japanese-query-year)))
   (let (month day date)
     (if (< year 1873)
@@ -808,16 +824,17 @@ Leap month is expressed as a list."
       (setq day (let ((last-day (calendar-last-day-of-month month year)))
                   (calendar-read (format "Days? (1-%d) " last-day)
                                  (lambda (d) (<= d last-day))))))
-    (setq date (list month day year))
-    (when (called-interactively-p 'any) (message "date=%s" date))
+    (setq date (calendar-gregorian-from-absolute
+                (calendar-japanese-to-absolute (list month day year))))
+    (when (called-interactively-p 'any) (message "西暦=%s" (calendar-date-string date)))
     date))
 
 ;;;###cal-autoload
 (defun calendar-japanese-goto-date (date)
-  "Move cursor to Japanese date DATE."
+  "Move cursor to DATE (gregorian).
+If called interactively, use `calendar-japanese-query-date' to input Japanese Date."
   (interactive (list (call-interactively 'calendar-japanese-query-date)))
-  (calendar-goto-date (calendar-gregorian-from-absolute
-                       (calendar-japanese-to-absolute date))))
+  (calendar-goto-date date))
 
 (defun calendar-japanese-era-name (year)
   "Japanese Era Name of YEAR with sexagenary."
@@ -827,7 +844,9 @@ Leap month is expressed as a list."
     (concat
      (mapconcat (lambda (era) (let ((name (car era))
                                (year (cdr era)))
-                           (when (= year 1) (setq year "元"))
+                           (if (= year 1) (setq year "元")
+                             (when calendar-japanese-use-kanji-number
+                               (setq year (calendar-japanese-decimal-notation year))))
                            (format "%s%s年" name year)))
                 (reverse eras) "・")
      (calendar-japanese-sexagenary base))))
